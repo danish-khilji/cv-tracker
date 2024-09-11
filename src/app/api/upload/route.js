@@ -5,24 +5,23 @@ import path from 'path';
 import FileData from "../../../../data/formData.json"
 
 
-// API handler for submitting candidate data
 export async function POST(req) {
     try {
-        // Create a unique ID
         const id = uuidv4();
 
-        const formData = await req.formData()
+        // Parse form data
+        const formData = await req.formData();
         const email = formData.get('email');
         const contact = formData.get('contact');
         const dateTime = formData.get('dateTime');
         const status = formData.get('status');
         const selected = formData.get('selected');
         const remarks = formData.get('remarks');
-
-        // Extract PDF file
         const pdfFile = formData.get('file');
 
-        // Prepare data with ID
+        const pdfFileName = `dansih${id}-${pdfFile.name}`;
+        const pdfFilePath = path.resolve(`./public/uploads/${pdfFileName}`);
+
         const data = {
             id,
             email,
@@ -31,12 +30,11 @@ export async function POST(req) {
             status,
             selected,
             remarks,
-            pdfFileName: `dansih${id}-${pdfFile.name}`, // Unique file name
+            pdfFileName
         };
 
-        // Define file path
+        // Define file paths
         const filePath = path.resolve('./data/formData.json');
-        const pdfFilePath = path.resolve(`./public/uploads/${data.pdfFileName}`);
 
         // Read existing data
         let existingData = [];
@@ -50,24 +48,26 @@ export async function POST(req) {
 
         // Write data to file
         fs.writeFileSync(filePath, JSON.stringify(existingData, null, 2));
-        fs.createWriteStream(pdfFilePath);
+
+        // Save PDF file
+        const buffer = await pdfFile.arrayBuffer();
+        fs.writeFileSync(pdfFilePath, Buffer.from(buffer));
 
         return NextResponse.json({
             success: true,
-            message: "suucesfuly"
-        })
+            message: "Successfully created record!"
+        });
     } catch (error) {
+        console.error('Error in POST handler:', error);
         return NextResponse.json({
             success: false,
-            message: "Failed",
-            error: error
-        })
+            message: "Failed to create record",
+            error: error.message
+        });
     }
 }
-
 export async function GET(req) {
     try {
-        console.log("Data ==> ", FileData)
         return NextResponse.json({
             success: true,
             message: "suucesfuly",
@@ -82,84 +82,144 @@ export async function GET(req) {
     }
 }
 
-// export async function PUT(req) {
-//     try {
-//         // Parse form data
-//         const formData = await req.formData();
-//         const id = formData.get('id');
-//         const email = formData.get('email');
-//         const contact = formData.get('contact');
-//         const dateTime = formData.get('dateTime');
-//         const status = formData.get('status');
-//         const selected = formData.get('selected');
-//         const remarks = formData.get('remarks');
+export async function PUT(req) {
+    try {
+        // Parse form data
+        const formData = await req.formData();
+        const id = formData.get('id');
+        const email = formData.get('email');
+        const contact = formData.get('contact');
+        const dateTime = formData.get('dateTime');
+        const status = formData.get('status');
+        const selected = formData.get('selected');
+        const remarks = formData.get('remarks');
+        const pdfFile = formData.get('file');
 
-//         // Extract PDF file
-//         const pdfFile = formData.get('file');
+        if (!id) {
+            return NextResponse.json({ message: 'ID is required!' }, { status: 400 });
+        }
 
-//         // Define file paths
-//         const dataFilePath = path.resolve('./data/formData.json');
-//         const uploadDir = path.resolve('./public/uploads');
+        // Define file paths
+        const dataFilePath = path.resolve('./data/formData.json');
+        const uploadDir = path.resolve('./public/uploads');
 
-//         if (!id) {
-//             return NextResponse.json({ message: 'ID is required!' }, { status: 400 });
-//         }
+        // Read existing data
+        let existingData = [];
+        if (fs.existsSync(dataFilePath)) {
+            const fileContent = fs.readFileSync(dataFilePath, 'utf-8');
+            existingData = JSON.parse(fileContent);
+        }
 
-//         // Read existing data
-//         let existingData = [];
-//         if (fs.existsSync(dataFilePath)) {
-//             const fileContent = fs.readFileSync(dataFilePath, 'utf-8');
-//             existingData = JSON.parse(fileContent);
-//         }
+        // Find the index of the item to update
+        const itemIndex = existingData.findIndex(item => item.id === id);
+        if (itemIndex === -1) {
+            return NextResponse.json({ message: 'Data not found!' }, { status: 404 });
+        }
 
-//         // Find the index of the item to update
-//         const itemIndex = existingData.findIndex(item => item.id === id);
-//         if (itemIndex === -1) {
-//             return NextResponse.json({ message: 'Data not found!' }, { status: 404 });
-//         }
+        // Update the item
+        existingData[itemIndex] = {
+            ...existingData[itemIndex],
+            email,
+            contact,
+            dateTime,
+            status,
+            selected,
+            remarks,
+        };
 
-//         // Update the item
-//         existingData[itemIndex] = {
-//             ...existingData[itemIndex],
-//             email,
-//             contact,
-//             dateTime,
-//             status,
-//             selected,
-//             remarks,
-//         };
+        // Handle PDF file update
+        if (pdfFile && pdfFile.size > 0) {
+            const newPdfFileName = `rao320${id}-${pdfFile.name}`;
+            const newPdfFilePath = path.join(uploadDir, newPdfFileName);
 
-//         // Handle PDF file update
-//         if (pdfFile && pdfFile.size > 0) {
-//             const newPdfFileName = `dansih${id}-${pdfFile.name}`;
-//             const newPdfFilePath = path.join(uploadDir, newPdfFileName);
+            // Remove old PDF file if it exists
+            if (existingData[itemIndex].pdfFileName) {
+                const oldPdfFilePath = path.join(uploadDir, existingData[itemIndex].pdfFileName);
 
-//             // Remove old PDF file if it exists
-//             if (existingData[itemIndex].pdfFileName) {
-//                 const oldPdfFilePath = path.join(uploadDir, existingData[itemIndex].pdfFileName);
-//                 if (fs.existsSync(oldPdfFilePath)) {
-//                     fs.unlinkSync(oldPdfFilePath);
-//                 }
-//             }
+                // Log the paths for debugging
+                console.log(`Attempting to delete old PDF file at: ${oldPdfFilePath}`);
 
-//             // Save new PDF file
-//             await new Promise((resolve, reject) => {
-//                 const fileStream = fs.createWriteStream(newPdfFilePath);
-//                 pdfFile.stream().pipe(fileStream);
-//                 fileStream.on('finish', resolve);
-//                 fileStream.on('error', reject);
-//             });
+                if (fs.existsSync(oldPdfFilePath)) {
+                    fs.unlinkSync(oldPdfFilePath);
+                    console.log(`Successfully deleted old PDF file: ${oldPdfFilePath}`);
+                } else {
+                    console.warn(`Old PDF file does not exist: ${oldPdfFilePath}`);
+                }
+            }
 
-//             // Update PDF file name in data
-//             existingData[itemIndex].pdfFileName = newPdfFileName;
-//         }
+            // Save new PDF file
+            const buffer = await pdfFile.arrayBuffer();
+            await fs.promises.writeFile(newPdfFilePath, Buffer.from(buffer));
 
-//         // Write updated data to file
-//         fs.writeFileSync(dataFilePath, JSON.stringify(existingData, null, 2));
+            // Update PDF file name in data
+            existingData[itemIndex].pdfFileName = newPdfFileName;
+        }
 
-//         return NextResponse.json({ success: true, message: 'Data updated successfully!' });
-//     } catch (error) {
-//         console.error('Error updating data:', error);
-//         return NextResponse.json({ success: false, message: 'Error updating data!', error: error.message }, { status: 500 });
-//     }
-// }
+        // Write updated data to file
+        await fs.promises.writeFile(dataFilePath, JSON.stringify(existingData, null, 2));
+
+        return NextResponse.json({ success: true, message: 'Data updated successfully!' });
+    } catch (error) {
+        console.error('Error updating data:', error);
+        return NextResponse.json({ success: false, message: 'Error updating data!', error: error.message }, { status: 500 });
+    }
+}
+
+
+
+export async function DELETE(req) {
+    try {
+        const { id } = await req.json();
+
+        if (!id) {
+            return NextResponse.json({
+                success: false,
+                message: "ID is required"
+            });
+        }
+
+        // Define file paths
+        const dataFilePath = path.resolve('./data/formData.json');
+        const uploadsDir = path.resolve('./public/uploads/');
+
+        // Read existing data
+        let existingData = [];
+        if (fs.existsSync(dataFilePath)) {
+            const fileContent = fs.readFileSync(dataFilePath, 'utf-8');
+            existingData = JSON.parse(fileContent);
+        }
+
+        // Find and remove the data entry by ID
+        const newData = existingData.filter(item => item.id !== id);
+        if (existingData.length === newData.length) {
+            return NextResponse.json({
+                success: false,
+                message: "Record not found"
+            });
+        }
+
+        // Write updated data to file
+        fs.writeFileSync(dataFilePath, JSON.stringify(newData, null, 2));
+
+        // Remove the associated PDF file
+        const pdfFile = existingData.find(item => item.id === id)?.pdfFileName;
+        if (pdfFile) {
+            const pdfFilePath = path.resolve(uploadsDir, pdfFile);
+            if (fs.existsSync(pdfFilePath)) {
+                fs.unlinkSync(pdfFilePath);
+            }
+        }
+
+        return NextResponse.json({
+            success: true,
+            message: "Successfully deleted record and file!"
+        });
+    } catch (error) {
+        console.error('Error in DELETE handler:', error);
+        return NextResponse.json({
+            success: false,
+            message: "Failed to delete record or file",
+            error: error.message
+        });
+    }
+}

@@ -3,20 +3,26 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import Modal from '@mui/material/Modal';
+import TextField from '@mui/material/TextField';
+import MenuItem from '@mui/material/MenuItem';
+import Select from '@mui/material/Select';
+import InputLabel from '@mui/material/InputLabel';
+import FormControl from '@mui/material/FormControl';
+import { Grid } from '@mui/material';
 
 const style = {
     position: 'absolute',
     top: '50%',
     left: '50%',
     transform: 'translate(-50%, -50%)',
-    width: 400,
+    width: 500,
     bgcolor: 'background.paper',
-    border: '2px solid #000',
+    borderRadius: 4,
     boxShadow: 24,
     p: 4,
 };
 
-export default function FormModal() {
+export default function FormModal(props) {
     const [open, setOpen] = React.useState(false);
     const handleOpen = () => setOpen(true);
     const handleClose = () => setOpen(false);
@@ -31,8 +37,13 @@ export default function FormModal() {
         file: null
     });
 
+    const [fileName, setFileName] = React.useState('');
+    const [uploadStatus, setUploadStatus] = React.useState('');
+
     const handleFileChange = (e) => {
-        setFormData({ ...formData, file: e.target.files[0] });
+        const file = e.target.files[0];
+        setFormData({ ...formData, file });
+        setFileName(file ? file.name : '');
     };
 
     const handleInputChange = (e) => {
@@ -44,6 +55,8 @@ export default function FormModal() {
         const file = formData.file;
         if (!file) return;
 
+        setUploadStatus('Uploading...');
+
         const uploadData = new FormData();
         uploadData.append('file', file);
         uploadData.append('contact', formData.contact);
@@ -53,29 +66,97 @@ export default function FormModal() {
         uploadData.append('selected', formData.selected);
         uploadData.append('remarks', formData.remarks);
 
-        const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: uploadData
-        });
-
-        const result = await response.json();
-        if (response.ok) {
-            setRows([...rows, result]);
-            setFormData({
-                contact: '',
-                email: '',
-                dateTime: '',
-                status: '',
-                selected: '',
-                remarks: '',
-                file: null
+        try {
+            const response = await fetch('/api/upload', {
+                method: 'POST',
+                body: uploadData
             });
+            const result = await response.json();
+            if (response.ok) {
+                setUploadStatus('Upload successful');
+                setFormData({
+                    contact: '',
+                    email: '',
+                    dateTime: '',
+                    status: '',
+                    selected: '',
+                    remarks: '',
+                    file: null
+                });
+                setFileName('');
+                props.onApiResponse();
+                handleClose()
+            } else {
+                setUploadStatus('Upload failed');
+            }
+        } catch (error) {
+            setUploadStatus('Upload error');
+        }
+    };
+    const handleUploadUpdate = async () => {
+        const file = formData.file;
+        const hasFile = file !== null;
+
+        setUploadStatus('Uploading...');
+
+        const uploadData = new FormData();
+        if (hasFile) {
+            uploadData.append('file', file);
+        }
+        uploadData.append('id', props?.data?.id);
+        uploadData.append('contact', formData.contact);
+        uploadData.append('email', formData.email);
+        uploadData.append('dateTime', formData.dateTime);
+        uploadData.append('status', formData.status);
+        uploadData.append('selected', formData.selected);
+        uploadData.append('remarks', formData.remarks);
+
+        try {
+            const response = await fetch('/api/upload', {
+                method: 'PUT',
+                body: uploadData
+            });
+            const result = await response.json();
+            if (response.ok) {
+                setUploadStatus('Update successful');
+                setFormData({
+                    contact: '',
+                    email: '',
+                    dateTime: '',
+                    status: '',
+                    selected: '',
+                    remarks: '',
+                    file: null
+                });
+                setFileName('');
+                props.onApiResponse();
+                handleClose()
+            } else {
+                setUploadStatus('Update failed');
+            }
+        } catch (error) {
+            console.log(error)
+            setUploadStatus('Update error');
         }
     };
 
+    React.useEffect(() => {
+        if (props?.data?.id) {
+            setFormData({
+                contact: props.data.contact || '',
+                email: props.data.email || '',
+                dateTime: props.data.dateTime || '',
+                status: props.data.status || '',
+                selected: props.data.selected || '',
+                remarks: props.data.remarks || '',
+                file: props.data.file || null
+            });
+        }
+    }, [props]);
+
     return (
         <div>
-            <Button onClick={handleOpen}>Open modal</Button>
+            <Button variant="contained" onClick={handleOpen}>{props.name}</Button>
             <Modal
                 open={open}
                 onClose={handleClose}
@@ -83,60 +164,115 @@ export default function FormModal() {
                 aria-describedby="modal-modal-description"
             >
                 <Box sx={style}>
-                    <div>
-                        <input
-                            type="file"
-                            onChange={handleFileChange}
-                        />
-                        <input
-                            type="text"
-                            name="contact"
-                            value={formData.contact}
-                            onChange={handleInputChange}
-                            placeholder="Contact"
-                        />
-                        <input
-                            type="email"
-                            name="email"
-                            value={formData.email}
-                            onChange={handleInputChange}
-                            placeholder="Email"
-                        />
-                        <input
-                            type="datetime-local"
-                            name="dateTime"
-                            value={formData.dateTime}
-                            onChange={handleInputChange}
-                            placeholder="Interview Date and Time"
-                        />
-                        <select
-                            name="status"
-                            value={formData.status}
-                            onChange={handleInputChange}
-                        >
-                            <option value="">Select...</option>
-                            <option value="Scheduled">Scheduled</option>
-                            <option value="On-Hold">On-Hold</option>
-                            <option value="Done">Done</option>
-                        </select>
-                        <select
-                            name="selected"
-                            value={formData.selected}
-                            onChange={handleInputChange}
-                        >
-                            <option value="">Select...</option>
-                            <option value="Yes">Yes</option>
-                            <option value="No">No</option>
-                        </select>
-                        <input
-                            type="text"
-                            name="remarks"
-                            value={formData.remarks}
-                            onChange={handleInputChange}
-                            placeholder="Remarks"
-                        />
-                        <button onClick={handleUpload}>Upload</button>
-                    </div>
+                    <Typography id="modal-modal-title" variant="h6" component="h2" mb={2}>
+                        {props?.data?.id ? 'Update Data' : 'Add Data'}
+                    </Typography>
+                    <Grid container spacing={2}>
+                        <Grid item xs={12}>
+                            <Button variant="contained" component="label">
+                                Upload File
+                                <input type="file" hidden onChange={handleFileChange} />
+                            </Button>
+                            {fileName && (
+                                <Typography variant="body2" color="textSecondary" mt={1}>
+                                    Selected file: {fileName}
+                                </Typography>
+                            )}
+                        </Grid>
+
+                        <Grid item xs={12}>
+                            <TextField
+                                fullWidth
+                                label="Contact"
+                                name="contact"
+                                value={formData.contact}
+                                onChange={handleInputChange}
+                            />
+                        </Grid>
+
+                        <Grid item xs={12}>
+                            <TextField
+                                fullWidth
+                                label="Email"
+                                name="email"
+                                type="email"
+                                value={formData.email}
+                                onChange={handleInputChange}
+                            />
+                        </Grid>
+
+                        <Grid item xs={12}>
+                            <TextField
+                                fullWidth
+                                label="Interview Date and Time"
+                                name="dateTime"
+                                type="datetime-local"
+                                InputLabelProps={{ shrink: true }}
+                                value={formData.dateTime}
+                                onChange={handleInputChange}
+                            />
+                        </Grid>
+
+                        <Grid item xs={12}>
+                            <FormControl fullWidth>
+                                <InputLabel>Status</InputLabel>
+                                <Select
+                                    name="status"
+                                    value={formData.status}
+                                    onChange={handleInputChange}
+                                    label="Status"
+                                >
+                                    <MenuItem value=""><em>Select...</em></MenuItem>
+                                    <MenuItem value="Scheduled">Scheduled</MenuItem>
+                                    <MenuItem value="On-Hold">On-Hold</MenuItem>
+                                    <MenuItem value="Done">Done</MenuItem>
+                                </Select>
+                            </FormControl>
+                        </Grid>
+
+                        <Grid item xs={12}>
+                            <FormControl fullWidth>
+                                <InputLabel>Selected</InputLabel>
+                                <Select
+                                    name="selected"
+                                    value={formData.selected}
+                                    onChange={handleInputChange}
+                                    label="Selected"
+                                >
+                                    <MenuItem value=""><em>Select...</em></MenuItem>
+                                    <MenuItem value="Yes">Yes</MenuItem>
+                                    <MenuItem value="No">No</MenuItem>
+                                </Select>
+                            </FormControl>
+                        </Grid>
+
+
+                        <Grid item xs={12}>
+                            <TextField
+                                fullWidth
+                                label="Remarks"
+                                name="remarks"
+                                value={formData.remarks}
+                                onChange={handleInputChange}
+                            />
+                        </Grid>
+
+                        <Grid item xs={12} mt={2}>
+                            <Button
+                                fullWidth
+                                variant="contained"
+                                color="primary"
+                                onClick={props?.data?.id ? handleUploadUpdate : handleUpload}
+                            >
+                                {props?.data?.id ? 'Update' : 'Upload'}
+                            </Button>
+                            {uploadStatus && (
+                                <Typography variant="body2" color={uploadStatus.includes('failed') || uploadStatus.includes('error') ? 'error' : 'success'} mt={2}>
+                                    {uploadStatus}
+                                </Typography>
+                            )}
+                        </Grid>
+                    </Grid>
                 </Box>
             </Modal>
         </div>
