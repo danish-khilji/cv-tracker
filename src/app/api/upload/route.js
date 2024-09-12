@@ -1,95 +1,151 @@
+import { MongoClient } from 'mongodb';
+import axios from 'axios';
+import FormData from 'form-data';
+
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
-import FileData from "../../../../data/formData.json"
 
+
+import dbConnect from '../../../../lib/db';
+import Candidate from '../../../../models/candidate';
+
+
+import { Readable } from 'stream';
+import { CollectionsOutlined } from '@mui/icons-material';
+
+function bufferToStream(buffer) {
+    const readable = new Readable();
+    readable._read = () => { };
+    readable.push(buffer);
+    readable.push(null);
+    return readable;
+}
+
+async function uploadToPinata(pdfFile) {
+    const pinataApiKey = process.env.PINATA_API_KEY;
+    const pinataSecretApiKey = process.env.PINATA_API_SECRET;
+
+    const uniqueFileName = `${uuidv4()}-${pdfFile.name}`;
+    const buffer = Buffer.from(await pdfFile.arrayBuffer());
+    const stream = bufferToStream(buffer);
+
+    const formData = new FormData();
+    formData.append('file', stream, uniqueFileName);
+
+    const metadata = JSON.stringify({
+        name: uniqueFileName,
+        keyvalues: {
+            uuid: uuidv4(),
+        },
+    });
+
+    formData.append('pinataMetadata', metadata);
+    formData.append('pinataOptions', JSON.stringify({ cidVersion: 1 }));
+
+    try {
+        const res = await axios.post('https://api.pinata.cloud/pinning/pinFileToIPFS', formData, {
+            maxBodyLength: 'Infinity',
+            headers: {
+                'Content-Type': `multipart/form-data; boundary=${formData._boundary}`,
+                pinata_api_key: pinataApiKey,
+                pinata_secret_api_key: pinataSecretApiKey,
+            },
+        });
+
+        return res.data.IpfsHash;
+    } catch (error) {
+        throw new Error('Failed to upload PDF to Pinata: ' + error.message);
+    }
+}
 
 export async function POST(req) {
     try {
+        await dbConnect();
+
         const id = uuidv4();
 
-        // Parse form data
         const formData = await req.formData();
+        const name = formData.get('name');
         const email = formData.get('email');
         const contact = formData.get('contact');
-        const dateTime = formData.get('dateTime');
+        const techstack = formData.get('techstack');
+        const dateTime = new Date(formData.get('dateTime'));
         const status = formData.get('status');
         const selected = formData.get('selected');
         const remarks = formData.get('remarks');
         const pdfFile = formData.get('file');
 
-        const pdfFileName = `dansih${id}-${pdfFile.name}`;
-        const pdfFilePath = path.resolve(`./public/uploads/${pdfFileName}`);
-
+        const pdfIpfsHash = await uploadToPinata(pdfFile);
         const data = {
             id,
+            name,
             email,
             contact,
+            techstack,
             dateTime,
             status,
             selected,
             remarks,
-            pdfFileName
+            pdfIpfsHash,
         };
+        console.log(data)
+        await Candidate.create(data);
 
-        // Define file paths
-        const filePath = path.resolve('./data/formData.json');
-
-        // Read existing data
-        let existingData = [];
-        if (fs.existsSync(filePath)) {
-            const fileContent = fs.readFileSync(filePath, 'utf-8');
-            existingData = JSON.parse(fileContent);
-        }
-
-        // Append new data
-        existingData.push(data);
-
-        // Write data to file
-        fs.writeFileSync(filePath, JSON.stringify(existingData, null, 2));
-
-        // Save PDF file
-        const buffer = await pdfFile.arrayBuffer();
-        fs.writeFileSync(pdfFilePath, Buffer.from(buffer));
-
-        return NextResponse.json({
+        return new Response(JSON.stringify({
             success: true,
-            message: "Successfully created record!"
+            message: "Successfully created record!",
+        }), {
+            status: 200,
+            headers: {
+                'Content-Type': 'application/json',
+            },
         });
     } catch (error) {
         console.error('Error in POST handler:', error);
-        return NextResponse.json({
+        return new Response(JSON.stringify({
             success: false,
             message: "Failed to create record",
-            error: error.message
+            error: error.message,
+        }), {
+            status: 500,
+            headers: {
+                'Content-Type': 'application/json',
+            },
         });
     }
 }
-export async function GET(req) {
+
+
+async function isCidInUse(cid) {
+    const count = await Candidate.countDocuments({ pdfIpfsHash: cid });
+    return count > 0;
+}
+async function removeFromPinata(ipfsHash) {
+    const pinataApiKey = process.env.PINATA_API_KEY;
+    const pinataSecretApiKey = process.env.PINATA_API_SECRET;
+
     try {
-        return NextResponse.json({
-            success: true,
-            message: "suucesfuly",
-            data: FileData
-        })
+        const response = await axios.delete(`https://api.pinata.cloud/pinning/unpin/${ipfsHash}`, {
+            headers: {
+                pinata_api_key: pinataApiKey,
+                pinata_secret_api_key: pinataSecretApiKey,
+            },
+        });
+        console.log('Successfully removed PDF from Pinata:', response.data);
     } catch (error) {
-        return NextResponse.json({
-            success: false,
-            message: "Failed",
-            error: error
-        })
+        console.error('Failed to remove PDF from Pinata:', error.response ? error.response.data : error.message);
+        throw new Error('Failed to remove PDF from Pinata: ' + (error.response ? error.response.data : error.message));
     }
 }
-
 export async function PUT(req) {
     try {
-        // Parse form data
         const formData = await req.formData();
         const id = formData.get('id');
         const email = formData.get('email');
         const contact = formData.get('contact');
-        const dateTime = formData.get('dateTime');
+        const dateTime = new Date(formData.get('dateTime'));
         const status = formData.get('status');
         const selected = formData.get('selected');
         const remarks = formData.get('remarks');
@@ -99,26 +155,15 @@ export async function PUT(req) {
             return NextResponse.json({ message: 'ID is required!' }, { status: 400 });
         }
 
-        // Define file paths
-        const dataFilePath = path.resolve('./data/formData.json');
-        const uploadDir = path.resolve('./public/uploads');
+        // Fetch existing record
+        const existingData = await Candidate.findOne({ id });
 
-        // Read existing data
-        let existingData = [];
-        if (fs.existsSync(dataFilePath)) {
-            const fileContent = fs.readFileSync(dataFilePath, 'utf-8');
-            existingData = JSON.parse(fileContent);
-        }
-
-        // Find the index of the item to update
-        const itemIndex = existingData.findIndex(item => item.id === id);
-        if (itemIndex === -1) {
+        if (!existingData) {
             return NextResponse.json({ message: 'Data not found!' }, { status: 404 });
         }
 
-        // Update the item
-        existingData[itemIndex] = {
-            ...existingData[itemIndex],
+        // Update fields
+        const updatedData = {
             email,
             contact,
             dateTime,
@@ -129,34 +174,17 @@ export async function PUT(req) {
 
         // Handle PDF file update
         if (pdfFile && pdfFile.size > 0) {
-            const newPdfFileName = `rao320${id}-${pdfFile.name}`;
-            const newPdfFilePath = path.join(uploadDir, newPdfFileName);
+            const newPdfIpfsHash = await uploadToPinata(pdfFile);
+            updatedData.pdfIpfsHash = newPdfIpfsHash;
 
-            // Remove old PDF file if it exists
-            if (existingData[itemIndex].pdfFileName) {
-                const oldPdfFilePath = path.join(uploadDir, existingData[itemIndex].pdfFileName);
-
-                // Log the paths for debugging
-                console.log(`Attempting to delete old PDF file at: ${oldPdfFilePath}`);
-
-                if (fs.existsSync(oldPdfFilePath)) {
-                    fs.unlinkSync(oldPdfFilePath);
-                    console.log(`Successfully deleted old PDF file: ${oldPdfFilePath}`);
-                } else {
-                    console.warn(`Old PDF file does not exist: ${oldPdfFilePath}`);
-                }
+            // Check if old PDF hash is still in use
+            if (existingData.pdfIpfsHash && !(await isCidInUse(existingData.pdfIpfsHash))) {
+                await removeFromPinata(existingData.pdfIpfsHash);
             }
-
-            // Save new PDF file
-            const buffer = await pdfFile.arrayBuffer();
-            await fs.promises.writeFile(newPdfFilePath, Buffer.from(buffer));
-
-            // Update PDF file name in data
-            existingData[itemIndex].pdfFileName = newPdfFileName;
         }
 
-        // Write updated data to file
-        await fs.promises.writeFile(dataFilePath, JSON.stringify(existingData, null, 2));
+        // Update record in MongoDB
+        await Candidate.updateOne({ id }, { $set: updatedData });
 
         return NextResponse.json({ success: true, message: 'Data updated successfully!' });
     } catch (error) {
@@ -169,57 +197,26 @@ export async function PUT(req) {
 
 export async function DELETE(req) {
     try {
-        const { id } = await req.json();
-
+        const body = await req.json(); // This is the key change here
+        const { id } = body;
+        console.log("id  =======>", id)
         if (!id) {
-            return NextResponse.json({
-                success: false,
-                message: "ID is required"
-            });
+            return new Response(JSON.stringify({ message: 'ID is required!' }), { status: 400 });
         }
 
-        // Define file paths
-        const dataFilePath = path.resolve('./data/formData.json');
-        const uploadsDir = path.resolve('./public/uploads/');
+        const document = await Candidate.findOneAndDelete({ _id: id });
 
-        // Read existing data
-        let existingData = [];
-        if (fs.existsSync(dataFilePath)) {
-            const fileContent = fs.readFileSync(dataFilePath, 'utf-8');
-            existingData = JSON.parse(fileContent);
+        if (!document) {
+            return new Response(JSON.stringify({ message: 'Document not found!' }), { status: 404 });
         }
 
-        // Find and remove the data entry by ID
-        const newData = existingData.filter(item => item.id !== id);
-        if (existingData.length === newData.length) {
-            return NextResponse.json({
-                success: false,
-                message: "Record not found"
-            });
+        if (document.pdfIpfsHash && !(await isCidInUse(document.pdfIpfsHash))) {
+            await removeFromPinata(document.pdfIpfsHash);
         }
 
-        // Write updated data to file
-        fs.writeFileSync(dataFilePath, JSON.stringify(newData, null, 2));
-
-        // Remove the associated PDF file
-        const pdfFile = existingData.find(item => item.id === id)?.pdfFileName;
-        if (pdfFile) {
-            const pdfFilePath = path.resolve(uploadsDir, pdfFile);
-            if (fs.existsSync(pdfFilePath)) {
-                fs.unlinkSync(pdfFilePath);
-            }
-        }
-
-        return NextResponse.json({
-            success: true,
-            message: "Successfully deleted record and file!"
-        });
+        return new Response(JSON.stringify({ success: true, message: 'Document deleted successfully!' }), { status: 200 });
     } catch (error) {
-        console.error('Error in DELETE handler:', error);
-        return NextResponse.json({
-            success: false,
-            message: "Failed to delete record or file",
-            error: error.message
-        });
+        console.error('Error deleting document:', error);
+        return new Response(JSON.stringify({ success: false, message: 'Error deleting document', error: error.message }), { status: 500 });
     }
 }
