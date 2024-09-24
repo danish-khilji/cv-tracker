@@ -65,19 +65,33 @@ export async function POST(req) {
         await dbConnect();
 
         const id = uuidv4();
-
         const formData = await req.formData();
-        const name = formData.get('name');
-        const email = formData.get('email');
-        const contact = formData.get('contact');
-        const techstack = formData.get('techstack');
-        const dateTime = new Date(formData.get('dateTime'));
-        const status = formData.get('status');
-        const selected = formData.get('selected');
-        const remarks = formData.get('remarks');
+        const name = formData.get('name') || null;
+        const email = formData.get('email') || null;
+        const contact = formData.get('contact') || null;
+        const techstack = formData.get('techstack'); // Required field
+        const dateTimeRaw = formData.get('dateTime'); // Raw date string from form
+        console.log(`this is datetimeraw: ${dateTimeRaw}`)
+        let dateTime = null;
+
+        if (dateTimeRaw) {
+            // Parse the date and ensure it's valid
+            const parsedDate = new Date(dateTimeRaw);
+            if (!isNaN(parsedDate.getTime())) {
+                dateTime = parsedDate; // Use the valid parsed date
+                console.log(`this is the dateTime: ${dateTime}`)
+            }
+        }
+
+        const status = formData.get('status') || null;
+        const selected = formData.get('selected') || null;
+        const remarks = formData.get('remarks') || null;
         const pdfFile = formData.get('file');
 
+        // Upload PDF to Pinata
         const pdfIpfsHash = await uploadToPinata(pdfFile);
+
+        // Prepare the data object, allowing null values for optional fields
         const data = {
             id,
             name,
@@ -90,7 +104,8 @@ export async function POST(req) {
             remarks,
             pdfIpfsHash,
         };
-        console.log(data)
+
+        // Save the candidate in the database
         await Candidate.create(data);
 
         return new Response(JSON.stringify({
@@ -118,6 +133,8 @@ export async function POST(req) {
 }
 
 
+
+
 async function isCidInUse(cid) {
     const count = await Candidate.countDocuments({ pdfIpfsHash: cid });
     return count > 0;
@@ -143,13 +160,27 @@ export async function PUT(req) {
     try {
         const formData = await req.formData();
         const id = formData.get('id');
-        const email = formData.get('email');
-        const contact = formData.get('contact');
-        const dateTime = new Date(formData.get('dateTime'));
+        const name = formData.get('name')
+        const email = formData.get('email') || null;
+        const contact = formData.get('contact') || null;
+        const techstack = formData.get('techstack'); // Required field
+        const dateTimeRaw = new Date(formData.get('dateTime')) ;
         const status = formData.get('status');
         const selected = formData.get('selected');
         const remarks = formData.get('remarks');
         const pdfFile = formData.get('file');
+
+        const pdfIpfsHash = await uploadToPinata(pdfFile);
+
+        let dateTime = null;
+        if (dateTimeRaw) {
+            // Parse the date and ensure it's valid
+            const parsedDate = new Date(dateTimeRaw);
+            if (!isNaN(parsedDate.getTime())) {
+                dateTime = parsedDate; // Use the valid parsed date
+                console.log(`this is the dateTime: ${dateTime}`)
+            }
+        }
 
         if (!id) {
             return NextResponse.json({ message: 'ID is required!' }, { status: 400 });
@@ -164,12 +195,15 @@ export async function PUT(req) {
 
         // Update fields
         const updatedData = {
+            name,
             email,
             contact,
+            techstack,
             dateTime,
             status,
             selected,
             remarks,
+            pdfIpfsHash
         };
 
         // Handle PDF file update

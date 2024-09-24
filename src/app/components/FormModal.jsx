@@ -63,14 +63,17 @@ export default function FormModal(props) {
 
         const uploadData = new FormData();
         uploadData.append('file', file);
-        uploadData.append('name', formData.name);
-        uploadData.append('contact', formData.contact);
-        uploadData.append('email', formData.email);
+        uploadData.append('name', formData.name || null);
+        uploadData.append('contact', formData.contact || null);
+        uploadData.append('email', formData.email|| null);
         uploadData.append('techstack', formData.techstack);
-        uploadData.append('dateTime', formData.dateTime);
-        uploadData.append('status', formData.status);
-        uploadData.append('selected', formData.selected);
-        uploadData.append('remarks', formData.remarks);
+        uploadData.append('dateTime', formData.dateTime ? new Date(formData.dateTime).toISOString() : null);
+        uploadData.append('status', formData.status );
+        uploadData.append('selected', formData.selected );
+        uploadData.append('remarks', formData.remarks || null);
+        console.log(`this is ${typeof formData.dateTime}`)
+        
+        
 
         try {
             const response = await fetch('/api/upload', {
@@ -78,6 +81,7 @@ export default function FormModal(props) {
                 body: uploadData
             });
             const result = await response.json();
+            
             if (response.ok) {
                 setUploadStatus('Upload successful');
                 setFormData({
@@ -112,14 +116,14 @@ export default function FormModal(props) {
             uploadData.append('file', file);
         }
         uploadData.append('id', props?.data?.id);
-        uploadData.append('name', formData.name);
-        uploadData.append('contact', formData.contact);
-        uploadData.append('email', formData.email);
-        uploadData.append('techstack', formData.techstack);
-        uploadData.append('dateTime', formData.dateTime);
+        uploadData.append('name', formData.name || null);
+        uploadData.append('contact', formData.contact || null);
+        uploadData.append('email', formData.email || null);
+        uploadData.append('techstack', formData.techstack || null);
+        uploadData.append('dateTime', formData.dateTime ? new Date(formData.dateTime).toISOString() : null);
         uploadData.append('status', formData.status);
         uploadData.append('selected', formData.selected);
-        uploadData.append('remarks', formData.remarks);
+        uploadData.append('remarks', formData.remarks || null);
 
         try {
             const response = await fetch('/api/upload', {

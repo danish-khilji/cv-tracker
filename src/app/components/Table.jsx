@@ -34,8 +34,10 @@ export default function BasicTable({ shouldRerenderTable }) {
         const fetchData = async () => {
             const response = await fetch('/api/getMetadata');
             const data = await response.json();
-            console.log(data)
+            console.log('data:=======', data)
             setRows(data);
+            console.log(`this is rows, ${rows[0].dateTime}`)
+            console.log(`this is rows, ${formatDateTime(rows[0].dateTime)}`)
         };
         fetchData();
     }, [shouldRerenderTable, RerenderTable]);
@@ -165,6 +167,9 @@ export default function BasicTable({ shouldRerenderTable }) {
 
 
 function formatDateTime(dateTimeString) {
+    if (dateTimeString == null) {
+        return ""
+    }
     const date = new Date(dateTimeString);
     const options = {
         day: '2-digit',

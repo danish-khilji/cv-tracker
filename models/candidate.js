@@ -11,34 +11,32 @@ const CandidateSchema = new mongoose.Schema({
     },
     email: {
         type: String,
-        required: true,
         trim: true,
-        lowercase: true
+        lowercase: true,
     },
     contact: {
         type: String,
-        required: true
     },
     techstack: {
         type: String,
+        required: true
     },
     dateTime: {
         type: Date,
-        required: true
+        default: null
     },
     status: {
         type: String,
         enum: ['On-Hold', 'Scheduled', 'Done'],
-        required: true
+        default: null
     },
     selected: {
         type: String,
         enum: ['Yes', 'No'],
-        required: true
+        default: null
     },
     remarks: {
         type: String,
-        required: true
     },
     pdfIpfsHash: {
         type: String,
