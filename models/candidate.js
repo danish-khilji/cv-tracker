@@ -9,7 +9,7 @@ const CandidateSchema = new mongoose.Schema({
     name: {
         type: String,
     },
-    email: {
+    email : {
         type: String,
         trim: true,
         lowercase: true,
